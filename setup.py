@@ -9,6 +9,7 @@ setup(
     url='https://github.com/BetterWorks/djschema',
     license='MIT',
     author='BetterWorks',
+    author_email='di@betterworks.com',
     keywords=('django', 'postgres', 'schema', 'isolation'),
     classifiers=[
         'Development Status :: 4 - Beta',
