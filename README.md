@@ -9,8 +9,6 @@ Change the Django database ENGINE to 'djschema' and set SCHEMA to be the name of
     'ENGINE': 'djschema',
     'SCHEMA': 'schema_name',
     'NAME': 'database',
-    'USER': 'user',
-    'PASSWORD': 'githubbedpassword',
     'HOST': '127.0.0.1',
     'PORT': '8458'
 }
