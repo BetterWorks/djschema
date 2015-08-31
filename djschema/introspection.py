@@ -36,11 +36,14 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
     _get_indexes_query = """
         SELECT attr.attname, idx.indkey, idx.indisunique, idx.indisprimary
         FROM pg_catalog.pg_class c, pg_catalog.pg_class c2,
-            pg_catalog.pg_index idx, pg_catalog.pg_attribute attr
+            pg_catalog.pg_index idx, pg_catalog.pg_attribute attr,
+            pg_catalog.pg_namespace n
         WHERE c.oid = idx.indrelid
             AND idx.indexrelid = c2.oid
             AND attr.attrelid = c.oid
             AND attr.attnum = idx.indkey[0]
+            AND c.relnamespace = n.oid
+            AND n.nspname = %s
             AND c.relname = %s"""
 
     def get_field_type(self, data_type, description):
@@ -59,7 +62,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'v')
                 AND n.nspname NOT IN ('pg_catalog', 'pg_toast')
-                AND pg_catalog.pg_table_is_visible(c.oid)""")
+                AND pg_catalog.pg_table_is_visible(c.oid)
+                AND n.nspname = %s""", [self.connection.schema])
         return [TableInfo(row[0], {'r': 't', 'v': 'v'}.get(row[1]))
                 for row in cursor.fetchall()
                 if row[0] not in self.ignored_tables]
@@ -71,7 +75,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         cursor.execute("""
             SELECT column_name, is_nullable, column_default
             FROM information_schema.columns
-            WHERE table_name = %s""", [table_name])
+            WHERE table_name = %s
+                AND table_schema = %s""", [table_name, self.connection.schema])
         field_map = {line[0]: line[1:] for line in cursor.fetchall()}
         cursor.execute("SELECT * FROM %s LIMIT 1" % self.connection.ops.quote_name(table_name))
         return [FieldInfo(*((force_text(line[0]),) + line[1:6]
@@ -90,8 +95,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             LEFT JOIN pg_class c2 ON con.confrelid = c2.oid
             LEFT JOIN pg_attribute a1 ON c1.oid = a1.attrelid AND a1.attnum = con.conkey[1]
             LEFT JOIN pg_attribute a2 ON c2.oid = a2.attrelid AND a2.attnum = con.confkey[1]
+            JOIN pg_catalog.pg_namespace n ON c1.relnamespace = n.oid AND n.nspname = %s
             WHERE c1.relname = %s
-                AND con.contype = 'f'""", [table_name])
+                AND con.contype = 'f'""", [self.connection.schema, table_name])
         relations = {}
         for row in cursor.fetchall():
             relations[row[1]] = (row[2], row[0])
@@ -110,14 +116,16 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 ON ccu.constraint_catalog = tc.constraint_catalog
                     AND ccu.constraint_schema = tc.constraint_schema
                     AND ccu.constraint_name = tc.constraint_name
-            WHERE kcu.table_name = %s AND tc.constraint_type = 'FOREIGN KEY'""", [table_name])
+            WHERE ccu.table_schema = %s
+                AND kcu.table_name = %s
+                AND tc.constraint_type = 'FOREIGN KEY'""", [self.connection.schema, table_name])
         key_columns.extend(cursor.fetchall())
         return key_columns
 
     def get_indexes(self, cursor, table_name):
         # This query retrieves each index on the given table, including the
         # first associated field name
-        cursor.execute(self._get_indexes_query, [table_name])
+        cursor.execute(self._get_indexes_query, [self.connection.schema, table_name])
         indexes = {}
         for row in cursor.fetchall():
             # row[1] (idx.indkey) is stored in the DB as an array. It comes out as
@@ -210,11 +218,13 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 idx.indisunique,
                 idx.indisprimary
             FROM pg_catalog.pg_class c, pg_catalog.pg_class c2,
-                pg_catalog.pg_index idx
+                pg_catalog.pg_index idx, pg_catalog.pg_namespace n
             WHERE c.oid = idx.indrelid
                 AND idx.indexrelid = c2.oid
                 AND c.relname = %s
-        """, [table_name])
+                AND c.relnamespace = n.oid
+                AND n.nspname = %s
+        """, [table_name, self.connection.schema])
         for index, columns, unique, primary in cursor.fetchall():
             if index not in constraints:
                 constraints[index] = {
