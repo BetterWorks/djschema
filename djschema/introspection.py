@@ -61,7 +61,6 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             FROM pg_catalog.pg_class c
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'v')
-                AND n.nspname NOT IN ('pg_catalog', 'pg_toast')
                 AND pg_catalog.pg_table_is_visible(c.oid)
                 AND n.nspname = %s""", [self.connection.schema])
         return [TableInfo(row[0], {'r': 't', 'v': 'v'}.get(row[1]))
@@ -75,8 +74,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         cursor.execute("""
             SELECT column_name, is_nullable, column_default
             FROM information_schema.columns
-            WHERE table_name = %s
-                AND table_schema = %s""", [table_name, self.connection.schema])
+            WHERE table_schema = %s AND table_name = %s
+            """, [self.connection.schema, table_name])
         field_map = {line[0]: line[1:] for line in cursor.fetchall()}
         cursor.execute("SELECT * FROM %s LIMIT 1" % self.connection.ops.quote_name(table_name))
         return [FieldInfo(*((force_text(line[0]),) + line[1:6]
@@ -95,9 +94,9 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             LEFT JOIN pg_class c2 ON con.confrelid = c2.oid
             LEFT JOIN pg_attribute a1 ON c1.oid = a1.attrelid AND a1.attnum = con.conkey[1]
             LEFT JOIN pg_attribute a2 ON c2.oid = a2.attrelid AND a2.attnum = con.confkey[1]
-            JOIN pg_catalog.pg_namespace n ON c1.relnamespace = n.oid AND n.nspname = %s
-            WHERE c1.relname = %s
-                AND con.contype = 'f'""", [self.connection.schema, table_name])
+            JOIN pg_catalog.pg_namespace n ON c1.relnamespace = n.oid
+            WHERE n.nspname = %s AND c1.relname = %s AND con.contype = 'f'
+            """, [self.connection.schema, table_name])
         relations = {}
         for row in cursor.fetchall():
             relations[row[1]] = (row[2], row[0])
@@ -157,7 +156,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 c.constraint_type,
                 array(SELECT table_name::text || '.' || column_name::text
                       FROM information_schema.constraint_column_usage
-                      WHERE constraint_name = kc.constraint_name)
+                      WHERE constraint_name = kc.constraint_name
+                        AND constraint_schema = kc.constraint_schema)
             FROM information_schema.key_column_usage AS kc
             JOIN information_schema.table_constraints AS c ON
                 kc.table_schema = c.table_schema AND
@@ -221,10 +221,10 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                 pg_catalog.pg_index idx, pg_catalog.pg_namespace n
             WHERE c.oid = idx.indrelid
                 AND idx.indexrelid = c2.oid
-                AND c.relname = %s
                 AND c.relnamespace = n.oid
                 AND n.nspname = %s
-        """, [table_name, self.connection.schema])
+                AND c.relname = %s
+        """, [self.connection.schema, table_name])
         for index, columns, unique, primary in cursor.fetchall():
             if index not in constraints:
                 constraints[index] = {
