@@ -5,7 +5,7 @@ from distutils.core import setup
 setup(
     name='djschema',
     description='Django Postgres schema isolation',
-    version='0.1',
+    version='0.2',
     url='https://github.com/BetterWorks/djschema',
     license='MIT',
     author='BetterWorks',

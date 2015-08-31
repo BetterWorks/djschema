@@ -2,3 +2,4 @@
 setup.py
 djschema/__init__.py
 djschema/base.py
+djschema/introspection.py
